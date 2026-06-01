@@ -1,0 +1,73 @@
+# Python
+
+venv/
+.venv/
+**pycache**/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment
+
+.env
+.env.*
+!.env.example
+
+# IDE
+
+.vscode/
+.idea/
+
+# macOS
+
+.DS_Store
+
+# Logs
+
+*.log
+
+# Vector DB
+
+vector_db/
+!vector_db/.gitkeep
+chroma_db/
+faiss_index/
+
+# Model Files
+
+gguf/
+!gguf/.gitkeep
+models/
+*.gguf
+*.bin
+*.safetensors
+
+# Jupyter
+
+.ipynb_checkpoints/
+
+# Build
+
+build/
+dist/
+
+# Testing
+
+.pytest_cache/
+.coverage
+
+# Temporary files
+
+tmp/
+temp/
+
+# Local documents
+
+docs/*.pdf
+docs/*.docx
+docs/*.txt
+
+# Optional
+
+*.sqlite
+*.db
