@@ -28,14 +28,14 @@ venv/
 
 # Vector DB
 
-vector_db/
+vector_db/*
 !vector_db/.gitkeep
 chroma_db/
 faiss_index/
 
 # Model Files
 
-gguf/
+gguf/*
 !gguf/.gitkeep
 models/
 *.gguf
