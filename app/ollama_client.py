@@ -1,10 +1,11 @@
 import requests
+from typing import List, Dict, Any
 
 
 OLLAMA_CHAT_URL = "http://localhost:11434/api/chat"
 
 
-def chat_with_ollama(model: str, messages: list[dict]) -> str:
+def chat_with_ollama(model: str, messages: List[Dict[str, Any]]) -> str:
     payload = {
         "model": model,
         "messages": messages,

@@ -66,6 +66,7 @@ temp/
 docs/*.pdf
 docs/*.docx
 docs/*.txt
+!docs/.gitkeep
 
 # Optional
 
