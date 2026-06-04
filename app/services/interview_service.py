@@ -3,8 +3,7 @@ from uuid import uuid4
 from datetime import datetime
 
 from app.services.model_service import select_model
-from app.ollama_client import chat_with_ollama
-
+from app.transformers_client import chat_with_transformers
 
 INTERVIEW_SESSIONS = {}
 
@@ -70,7 +69,7 @@ def create_interview_answer(
         "content": question,
     })
 
-    answer = chat_with_ollama(model, messages)
+    answer = chat_with_transformers(model, messages)
 
     return {
         "stage": stage,
@@ -117,7 +116,7 @@ def start_interview(session_id: str) -> Dict[str, Any]:
         {"role": "user", "content": "모의 면접을 시작해 주세요. 첫 번째 질문을 해주세요."},
     ]
 
-    question = chat_with_ollama(model, messages)
+    question = chat_with_transformers(model, messages)
 
     session["history"].append({
         "role": "assistant",
@@ -230,7 +229,7 @@ def submit_answer(
         "content": "지원자의 마지막 답변을 바탕으로 다음 면접 질문을 1개 생성해 주세요.",
     })
 
-    next_question = chat_with_ollama(model, messages)
+    next_question = chat_with_transformers(model, messages)
 
     session["current_question_index"] = next_question_index
 
@@ -313,7 +312,7 @@ def generate_feedback(
         },
     ]
 
-    feedback = chat_with_ollama(
+    feedback = chat_with_transformers(
         model,
         messages,
     )

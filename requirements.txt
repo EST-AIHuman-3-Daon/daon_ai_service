@@ -6,3 +6,7 @@ langchain-community
 langchain-ollama
 faiss-cpu
 python-dotenv
+transformers 
+peft 
+accelerate 
+torch

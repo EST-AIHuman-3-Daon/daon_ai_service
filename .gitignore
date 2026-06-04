@@ -37,7 +37,8 @@ faiss_index/
 
 gguf/*
 !gguf/.gitkeep
-models/
+models/*
+!models/.gitkeep
 *.gguf
 *.bin
 *.safetensors
