@@ -5,7 +5,10 @@ from datetime import datetime
 from app.services.model_service import select_model
 from app.transformers_client import chat_with_transformers
 
-INTERVIEW_SESSIONS = {}
+from app.db.collections import (
+    sessions_collection,
+    interview_messages_collection,
+)
 
 
 def create_session(
@@ -28,17 +31,19 @@ def create_session(
         "status": "setup",
         "resume_text": resume_text,
         "job_post_text": job_post_text,
-        "history": [],
         "created_at": datetime.now().isoformat(),
         "ended_at": None,
     }
 
-    INTERVIEW_SESSIONS[session_id] = session
+    sessions_collection.insert_one(session)
     return session
 
 
 def get_session(session_id: str) -> Dict[str, Any]:
-    return INTERVIEW_SESSIONS.get(session_id)
+    return sessions_collection.find_one(
+        {"session_id": session_id},
+        {"_id": 0}
+    )
 
 
 def create_interview_answer(
@@ -83,7 +88,6 @@ def start_interview(session_id: str) -> Dict[str, Any]:
     if not session:
         raise ValueError("session not found")
 
-    session["status"] = "interview"
     session["current_question_index"] = 1
 
     model = select_model(
@@ -117,16 +121,33 @@ def start_interview(session_id: str) -> Dict[str, Any]:
 
     question = chat_with_transformers(model, messages)
 
-    session["history"].append({
-        "role": "assistant",
-        "content": question,
-        "question_index": 1,
-        "created_at": datetime.now().isoformat(),
-    })
+    interview_messages_collection.insert_one(
+        {
+            "session_id": session_id,
+            "role": "assistant",
+            "content": question,
+            "question_index": 1,
+            "model": model,
+            "created_at":
+                datetime.now().isoformat(),
+        }
+    )
+
+    sessions_collection.update_one(
+        {
+            "session_id": session_id
+        },
+        {
+            "$set": {
+                "status": "interview",
+                "current_question_index": 1,
+            }
+        }
+    )
 
     return {
         "session_id": session_id,
-        "status": session["status"],
+        "status": "interview",
         "question_index": 1,
         "question": question,
         "model": model,
@@ -154,27 +175,51 @@ def submit_answer(
 
     current_question_index = session["current_question_index"]
 
-    session["history"].append({
-        "role": "user",
-        "content": answer,
-        "question_index": current_question_index,
-        "model": selected_model,
-        "created_at": datetime.now().isoformat(),
-    })
+    interview_messages_collection.insert_one(
+        {
+            "session_id": session_id,
+            "role": "user",
+            "content": answer,
+            "question_index":
+                current_question_index,
+            "model": selected_model,
+            "created_at":
+                datetime.now().isoformat(),
+        }
+    )
 
     question_count = session["question_count"]
 
     if current_question_index >= question_count:
-        session["status"] = "feedback_ready"
-        session["ended_at"] = datetime.now().isoformat()
+        ended_at = datetime.now().isoformat()
+
+        sessions_collection.update_one(
+            {"session_id": session_id},
+            {
+                "$set": {
+                    "status": "feedback_ready",
+                    "ended_at": ended_at,
+                    "model": selected_model,
+                }
+            }
+        )
 
         feedback_result = generate_feedback(session_id)
+        updated_session = get_session(session_id)
 
-        session["status"] = "feedback_done"
+        sessions_collection.update_one(
+            {"session_id": session_id},
+            {
+                "$set": {
+                    "status": updated_session["status"],
+                    "feedback": feedback_result["feedback"],
+                }
+            }
+        )
 
         return {
             "session_id": session_id,
-            "status": session["status"],
+            "status": updated_session["status"],
             "question_index": current_question_index,
             "answer_saved": True,
             "next_question": "",
@@ -189,12 +234,19 @@ def submit_answer(
         model=selected_model,
     )
 
+    history = list(
+        interview_messages_collection.find(
+            {"session_id": session_id},
+            {"_id": 0}
+        ).sort("created_at", 1)
+    )
+
     history_messages = [
         {
             "role": item["role"],
             "content": item["content"],
         }
-        for item in session["history"]
+        for item in history
         if item["role"] in ["user", "assistant"]
     ]
 
@@ -236,13 +288,24 @@ def submit_answer(
 
     session["current_question_index"] = next_question_index
 
-    session["history"].append({
+    interview_messages_collection.insert_one({
+        "session_id": session_id,
         "role": "assistant",
         "content": next_question,
         "question_index": next_question_index,
         "model": selected_model,
         "created_at": datetime.now().isoformat(),
     })
+
+    sessions_collection.update_one(
+        {"session_id": session_id},
+        {
+            "$set": {
+                "current_question_index": next_question_index,
+                "model": selected_model,
+            }
+        }
+    )
 
     return {
         "session_id": session_id,
@@ -274,7 +337,14 @@ def generate_feedback(
 
     conversation = []
 
-    for item in session["history"]:
+    history = list(
+        interview_messages_collection.find(
+            {"session_id": session_id},
+            {"_id": 0}
+        ).sort("created_at", 1)
+    )
+
+    for item in history:
         role = item["role"]
         question_index = item.get("question_index", "")
 
@@ -350,8 +420,6 @@ def generate_feedback(
         model,
         messages,
     )
-
-    session["feedback"] = feedback
 
     return {
         "session_id": session_id,

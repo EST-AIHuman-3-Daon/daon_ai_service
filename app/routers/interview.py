@@ -55,7 +55,7 @@ def create_interview_session(req: CreateSessionRequest):
     session = create_session(
         user_id=req.user_id,
         model=req.model,
-        job_role=req.job_role,
+        job_role=req.job_role or "",
         question_count=req.question_count,
         resume_text=req.resume_text or "",
         job_post_text=req.job_post_text or "",
