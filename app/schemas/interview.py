@@ -1,8 +1,20 @@
 from typing import List, Literal, Optional
 from pydantic import BaseModel, Field
 
-Persona = Literal["friendly", "pressure"]
-Stage = Literal["idle", "setup", "interview", "feedback", "feedback_ready"]
+
+ModelName = Literal[
+    "base",
+    "friendly",
+    "pressure",
+]
+
+Stage = Literal[
+    "idle",
+    "setup",
+    "interview",
+    "feedback",
+    "feedback_ready",
+]
 
 
 class ChatMessage(BaseModel):
@@ -12,33 +24,30 @@ class ChatMessage(BaseModel):
 
 class ModelRouteRequest(BaseModel):
     stage: Stage = "idle"
-    persona: Persona = "friendly"
-    question: str = ""
+    model: ModelName = "base"
 
 
 class ModelRouteResponse(BaseModel):
     stage: Stage
-    persona: Persona
-    model: str
+    model: ModelName
 
 
 class ChatRequest(BaseModel):
     stage: Stage = "interview"
-    persona: Persona = "friendly"
+    model: ModelName = "friendly"
     question: str
     history: List[ChatMessage] = Field(default_factory=list)
 
 
 class ChatResponse(BaseModel):
     stage: Stage
-    persona: Persona
-    model: str
+    model: ModelName
     answer: str
 
 
 class CreateSessionRequest(BaseModel):
     user_id: str
-    persona: Persona = "friendly"
+    model: ModelName = "friendly"
     job_role: str = "ICT"
     question_count: int = 5
     resume_text: Optional[str] = ""
@@ -48,20 +57,23 @@ class CreateSessionRequest(BaseModel):
 class CreateSessionResponse(BaseModel):
     session_id: str
     user_id: str
-    persona: Persona
+    model: ModelName
     job_role: str
     question_count: int
     status: str
+
 
 class StartInterviewResponse(BaseModel):
     session_id: str
     status: str
     question_index: int
     question: str
-    model: str
+    model: ModelName
+
 
 class SubmitAnswerRequest(BaseModel):
     answer: str
+    model: Optional[ModelName] = None
 
 
 class SubmitAnswerResponse(BaseModel):
@@ -71,11 +83,11 @@ class SubmitAnswerResponse(BaseModel):
     answer_saved: bool
     next_question: str = ""
     model: str = ""
-    message: str = ""
-    feedback: str = ""
+    answer: str = ""
+
 
 class FeedbackResponse(BaseModel):
     session_id: str
     status: str
-    model: str
+    model: ModelName
     feedback: str

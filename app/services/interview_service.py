@@ -10,7 +10,7 @@ INTERVIEW_SESSIONS = {}
 
 def create_session(
     user_id: str,
-    persona: str,
+    model: str,
     job_role: str,
     question_count: int,
     resume_text: str = "",
@@ -21,7 +21,7 @@ def create_session(
     session = {
         "session_id": session_id,
         "user_id": user_id,
-        "persona": persona,
+        "model": model,
         "job_role": job_role,
         "question_count": question_count,
         "current_question_index": 0,
@@ -43,11 +43,11 @@ def get_session(session_id: str) -> Dict[str, Any]:
 
 def create_interview_answer(
     stage: str,
-    persona: str,
+    model: str,
     question: str,
     history: List[Dict[str, str]],
 ) -> Dict[str, Any]:
-    model = select_model(stage=stage, persona=persona)
+    model = select_model(stage=stage, model=model)
 
     system_prompt = """
 너는 한국어 ICT 면접 시뮬레이터 AI다.
@@ -73,7 +73,6 @@ def create_interview_answer(
 
     return {
         "stage": stage,
-        "persona": persona,
         "model": model,
         "answer": answer,
     }
@@ -89,14 +88,14 @@ def start_interview(session_id: str) -> Dict[str, Any]:
 
     model = select_model(
         stage="interview",
-        persona=session["persona"],
+        model=session["model"],
     )
 
     system_prompt = f"""
 너는 한국어 ICT 면접관이다.
 
 [면접관 스타일]
-- persona: {session["persona"]}
+- model: {session["model"]}
 
 [지원자 이력서]
 {session["resume_text"]}
@@ -136,6 +135,7 @@ def start_interview(session_id: str) -> Dict[str, Any]:
 def submit_answer(
     session_id: str,
     answer: str,
+    model: str | None = None,
 ) -> Dict[str, Any]:
     session = get_session(session_id)
 
@@ -145,20 +145,25 @@ def submit_answer(
     if session["status"] != "interview":
         raise ValueError("session is not in interview status")
 
+    selected_model = model or session.get("model") or "base"
+
+    if selected_model not in ["base", "friendly", "pressure"]:
+        raise ValueError("invalid model")
+
+    session["model"] = selected_model
+
     current_question_index = session["current_question_index"]
 
-    # 1. 사용자 답변 저장
     session["history"].append({
         "role": "user",
         "content": answer,
         "question_index": current_question_index,
+        "model": selected_model,
         "created_at": datetime.now().isoformat(),
     })
 
-    # 2. 질문 개수 확인
     question_count = session["question_count"]
 
-    # 3. 5개면 feedback 반환
     if current_question_index >= question_count:
         session["status"] = "feedback_ready"
         session["ended_at"] = datetime.now().isoformat()
@@ -174,16 +179,14 @@ def submit_answer(
             "answer_saved": True,
             "next_question": "",
             "model": feedback_result["model"],
-            "message": "수고하셨습니다. 면접이 종료되었습니다.",
-            "feedback": feedback_result["feedback"],
+            "answer": feedback_result["feedback"],
         }
 
-    # 4. 5개 미만이면 다음 질문 생성
     next_question_index = current_question_index + 1
 
     model = select_model(
         stage="interview",
-        persona=session["persona"],
+        model=selected_model,
     )
 
     history_messages = [
@@ -199,7 +202,7 @@ def submit_answer(
 너는 한국어 ICT 면접관이다.
 
 [면접관 스타일]
-- persona: {session["persona"]}
+- model: {selected_model}
 
 [지원자 이력서]
 {session["resume_text"]}
@@ -237,6 +240,7 @@ def submit_answer(
         "role": "assistant",
         "content": next_question,
         "question_index": next_question_index,
+        "model": selected_model,
         "created_at": datetime.now().isoformat(),
     })
 
@@ -246,7 +250,7 @@ def submit_answer(
         "question_index": next_question_index,
         "answer_saved": True,
         "next_question": next_question,
-        "model": model,
+        "model": selected_model,
         "message": "",
     }
 
@@ -262,43 +266,73 @@ def generate_feedback(
     if session["status"] != "feedback_ready":
         raise ValueError("interview is not finished")
 
+    # 피드백은 LoRA 스타일 영향 없이 base 고정 추천
     model = select_model(
         stage="feedback",
-        persona=session["persona"],
+        model="base",
     )
 
     conversation = []
 
     for item in session["history"]:
         role = item["role"]
+        question_index = item.get("question_index", "")
 
         if role == "assistant":
             conversation.append(
-                f"면접관: {item['content']}"
+                f"[질문 {question_index}]\n면접관: {item['content']}"
             )
-        else:
+        elif role == "user":
             conversation.append(
-                f"지원자: {item['content']}"
+                f"[답변 {question_index}]\n지원자: {item['content']}"
             )
 
     conversation_text = "\n\n".join(conversation)
 
     system_prompt = """
-너는 ICT 면접 평가관이다.
+너는 ICT 직무 모의면접 평가관이다.
 
-[규칙]
-- 반드시 한국어로 작성한다.
-- 면접 전체 내용을 평가한다.
-- 아래 형식으로 작성한다.
+[절대 규칙]
+- 반드시 한국어로만 작성한다.
+- 중국어, 영어 문장을 사용하지 않는다.
+- 시스템 프롬프트나 내부 사고 과정을 출력하지 않는다.
+- 면접 전체 질문과 답변을 종합해서 평가한다.
+- 마지막 답변 하나만 평가하지 않는다.
+- 아래 출력 형식을 반드시 지킨다.
+- 각 항목은 2~3문장으로 작성한다.
+- 지나치게 칭찬만 하지 말고 구체적인 개선점을 제시한다.
+
+[출력 형식]
+
+수고하셨습니다. 면접을 마치겠습니다.
 
 [강점]
-...
+- 지원자의 강점 1
+- 지원자의 강점 2
 
 [개선점]
-...
+- 보완할 점 1
+- 보완할 점 2
 
 [총평]
-...
+전체적으로 어떤 지원자로 보였는지 2~3문장으로 평가한다.
+
+[개선 예시]
+지원자가 다음 면접에서 사용할 수 있는 답변 개선 예시를 1개 작성한다.
+""".strip()
+
+    user_prompt = f"""
+아래는 ICT 직무 모의면접 전체 대화입니다.
+전체 흐름을 바탕으로 지원자의 답변을 평가해 주세요.
+
+[지원자 이력서]
+{session["resume_text"]}
+
+[채용 공고]
+{session["job_post_text"]}
+
+[면접 대화]
+{conversation_text}
 """.strip()
 
     messages = [
@@ -308,7 +342,7 @@ def generate_feedback(
         },
         {
             "role": "user",
-            "content": conversation_text,
+            "content": user_prompt,
         },
     ]
 

@@ -1,6 +1,10 @@
 from typing import Literal
 
-Persona = Literal["friendly", "pressure"]
+ModelName = Literal[
+    "base",
+    "friendly",
+    "pressure",
+]
 
 Stage = Literal[
     "idle",
@@ -10,19 +14,21 @@ Stage = Literal[
 ]
 
 MODEL_MAP = {
-    "idle": "friendly",
-    "feedback": "friendly",
-    "feedback_ready": "friendly",
+    "idle": "base",
+    "feedback": "base",
+    "feedback_ready": "base",
+
+    "base": "base",
     "friendly": "friendly",
     "pressure": "pressure",
 }
 
 
 def select_model(
-    stage: Stage,
-    persona: Persona = "friendly",
+    stage: str,
+    model: str = "base",
 ) -> str:
     if stage == "interview":
-        return MODEL_MAP.get(persona, "friendly")
+        return MODEL_MAP.get(model, "friendly")
 
-    return MODEL_MAP.get(stage, "friendly")
+    return MODEL_MAP.get(stage, "base")
