@@ -30,7 +30,11 @@ for name, path in LORA_PATHS.items():
     print("adapter_config exists:", Path(path, "adapter_config.json").exists())
     print("adapter_model exists:", Path(path, "adapter_model.safetensors").exists())
 
-device = "mps" if torch.backends.mps.is_available() else "cpu"
+device = (
+    "cuda" if torch.cuda.is_available()
+    else "mps" if torch.backends.mps.is_available()
+    else "cpu"
+)
 
 tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_ID)
 
