@@ -96,7 +96,7 @@ def start_interview(session_id: str) -> Dict[str, Any]:
     )
 
     system_prompt = f"""
-너는 한국어 ICT 면접관이다.
+너는 한국인 면접관이다.
 
 [면접관 스타일]
 - model: {session["model"]}
@@ -111,6 +111,7 @@ def start_interview(session_id: str) -> Dict[str, Any]:
 - 첫 번째 면접 질문을 생성한다.
 - 질문은 1개만 생성한다.
 - 반드시 한국어로 작성한다.
+- 중국어, 영어 문장을 사용하지 않는다.
 - 질문은 짧고 명확하게 작성한다.
 """.strip()
 
@@ -251,7 +252,7 @@ def submit_answer(
     ]
 
     system_prompt = f"""
-너는 한국어 ICT 면접관이다.
+너는 한국인 면접관이다.
 
 [면접관 스타일]
 - model: {selected_model}
@@ -270,6 +271,7 @@ def submit_answer(
 - 이전 답변을 바탕으로 다음 면접 질문 또는 꼬리질문을 생성한다.
 - 질문은 1개만 생성한다.
 - 반드시 한국어로 작성한다.
+- 중국어, 영어 문장을 사용하지 않는다.
 - 질문은 짧고 명확하게 작성한다.
 """.strip()
 
@@ -392,7 +394,7 @@ def generate_feedback(
 """.strip()
 
     user_prompt = f"""
-아래는 ICT 직무 모의면접 전체 대화입니다.
+아래는 모의면접 전체 대화입니다.
 전체 흐름을 바탕으로 지원자의 답변을 평가해 주세요.
 
 [지원자 이력서]
@@ -419,6 +421,7 @@ def generate_feedback(
     feedback = chat_with_transformers(
         model,
         messages,
+        max_new_tokens=1024,
     )
 
     return {
@@ -427,3 +430,40 @@ def generate_feedback(
         "model": model,
         "feedback": feedback,
     }
+
+def end_interview(session_id: str) -> Dict[str, Any]:
+    session = get_session(session_id)
+
+    if not session:
+        raise ValueError("session not found")
+
+    if session["status"] == "feedback_ready":
+        return generate_feedback(session_id)
+
+    if session["status"] != "interview":
+        raise ValueError("session is not in interview status")
+
+    ended_at = datetime.now().isoformat()
+
+    sessions_collection.update_one(
+        {"session_id": session_id},
+        {
+            "$set": {
+                "status": "feedback_ready",
+                "ended_at": ended_at,
+            }
+        }
+    )
+
+    feedback_result = generate_feedback(session_id)
+
+    sessions_collection.update_one(
+        {"session_id": session_id},
+        {
+            "$set": {
+                "feedback": feedback_result["feedback"],
+            }
+        }
+    )
+
+    return feedback_result

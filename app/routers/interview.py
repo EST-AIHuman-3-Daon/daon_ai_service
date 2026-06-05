@@ -19,6 +19,7 @@ from app.services.interview_service import (
     start_interview,
     submit_answer,
     generate_feedback,
+    end_interview,  
 )
 
 router = APIRouter(prefix="/interview", tags=["interview"])
@@ -133,6 +134,26 @@ def create_feedback(
 ):
     try:
         return generate_feedback(session_id)
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e),
+        )
+
+    except RuntimeError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=str(e),
+        )
+    
+@router.post(
+    "/sessions/{session_id}/end",
+    response_model=FeedbackResponse,
+)
+def end_interview_session(session_id: str):
+    try:
+        return end_interview(session_id)
 
     except ValueError as e:
         raise HTTPException(

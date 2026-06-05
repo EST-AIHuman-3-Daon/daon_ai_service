@@ -60,14 +60,16 @@ llm.eval()
 def chat_with_transformers(
     model_name: str,
     messages: List[Dict[str, Any]],
+    max_new_tokens: int = 80,
 ) -> str:
     try:
-        adapter_name = model_name
+        use_base = model_name == "base"
 
-        if adapter_name not in LORA_PATHS:
-            adapter_name = "friendly"
+        if not use_base:
+            if model_name not in LORA_PATHS:
+                model_name = "friendly"
 
-        llm.set_adapter(adapter_name)
+            llm.set_adapter(model_name)
 
         prompt = tokenizer.apply_chat_template(
             messages,
@@ -81,15 +83,27 @@ def chat_with_transformers(
         ).to(device)
 
         with torch.no_grad():
-            outputs = llm.generate(
-                **inputs,
-                max_new_tokens=80,
-                temperature=0.2,
-                top_p=0.8,
-                repetition_penalty=1.2,
-                do_sample=False,
-                pad_token_id=tokenizer.eos_token_id,
-            )
+            if use_base:
+                with llm.disable_adapter():
+                    outputs = llm.generate(
+                        **inputs,
+                        max_new_tokens=max_new_tokens,
+                        temperature=0.2,
+                        top_p=0.8,
+                        repetition_penalty=1.2,
+                        do_sample=False,
+                        pad_token_id=tokenizer.eos_token_id,
+                    )
+            else:
+                outputs = llm.generate(
+                    **inputs,
+                    max_new_tokens=max_new_tokens,
+                    temperature=0.2,
+                    top_p=0.8,
+                    repetition_penalty=1.2,
+                    do_sample=False,
+                    pad_token_id=tokenizer.eos_token_id,
+                )
 
         generated_tokens = outputs[0][inputs["input_ids"].shape[-1]:]
 
