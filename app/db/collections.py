@@ -15,6 +15,3 @@ def create_indexes():
             ("created_at", 1),
         ]
     )
-
-
-create_indexes()

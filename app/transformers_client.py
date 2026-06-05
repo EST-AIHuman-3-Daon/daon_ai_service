@@ -1,5 +1,6 @@
 from typing import List, Dict, Any
 from pathlib import Path
+from threading import Lock
 
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
@@ -56,6 +57,8 @@ llm.load_adapter(
 
 llm.eval()
 
+generation_lock = Lock()
+
 
 def chat_with_transformers(
     model_name: str,
@@ -64,12 +67,6 @@ def chat_with_transformers(
 ) -> str:
     try:
         use_base = model_name == "base"
-
-        if not use_base:
-            if model_name not in LORA_PATHS:
-                model_name = "friendly"
-
-            llm.set_adapter(model_name)
 
         prompt = tokenizer.apply_chat_template(
             messages,
@@ -82,9 +79,26 @@ def chat_with_transformers(
             return_tensors="pt",
         ).to(device)
 
-        with torch.no_grad():
-            if use_base:
-                with llm.disable_adapter():
+        with generation_lock:
+            if not use_base:
+                if model_name not in LORA_PATHS:
+                    model_name = "friendly"
+
+                llm.set_adapter(model_name)
+
+            with torch.no_grad():
+                if use_base:
+                    with llm.disable_adapter():
+                        outputs = llm.generate(
+                            **inputs,
+                            max_new_tokens=max_new_tokens,
+                            temperature=0.2,
+                            top_p=0.8,
+                            repetition_penalty=1.2,
+                            do_sample=False,
+                            pad_token_id=tokenizer.eos_token_id,
+                        )
+                else:
                     outputs = llm.generate(
                         **inputs,
                         max_new_tokens=max_new_tokens,
@@ -94,16 +108,6 @@ def chat_with_transformers(
                         do_sample=False,
                         pad_token_id=tokenizer.eos_token_id,
                     )
-            else:
-                outputs = llm.generate(
-                    **inputs,
-                    max_new_tokens=max_new_tokens,
-                    temperature=0.2,
-                    top_p=0.8,
-                    repetition_penalty=1.2,
-                    do_sample=False,
-                    pad_token_id=tokenizer.eos_token_id,
-                )
 
         generated_tokens = outputs[0][inputs["input_ids"].shape[-1]:]
 

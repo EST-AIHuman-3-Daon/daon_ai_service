@@ -206,13 +206,12 @@ def submit_answer(
         )
 
         feedback_result = generate_feedback(session_id)
-        updated_session = get_session(session_id)
 
         sessions_collection.update_one(
             {"session_id": session_id},
             {
                 "$set": {
-                    "status": updated_session["status"],
+                    "status": "feedback_done",
                     "feedback": feedback_result["feedback"],
                 }
             }
@@ -220,7 +219,7 @@ def submit_answer(
 
         return {
             "session_id": session_id,
-            "status": updated_session["status"],
+            "status": "feedback_done",
             "question_index": current_question_index,
             "answer_saved": True,
             "next_question": "",
@@ -328,6 +327,14 @@ def generate_feedback(
     if not session:
         raise ValueError("session not found")
 
+    if session.get("feedback"):
+        return {
+            "session_id": session_id,
+            "status": session["status"],
+            "model": "base",
+            "feedback": session["feedback"],
+        }
+
     if session["status"] != "feedback_ready":
         raise ValueError("interview is not finished")
 
@@ -424,9 +431,19 @@ def generate_feedback(
         max_new_tokens=1024,
     )
 
+    sessions_collection.update_one(
+        {"session_id": session_id},
+        {
+            "$set": {
+                "status": "feedback_done",
+                "feedback": feedback,
+            }
+        }
+    )
+
     return {
         "session_id": session_id,
-        "status": session["status"],
+        "status": "feedback_done",
         "model": model,
         "feedback": feedback,
     }
@@ -436,6 +453,14 @@ def end_interview(session_id: str) -> Dict[str, Any]:
 
     if not session:
         raise ValueError("session not found")
+
+    if session.get("feedback"):
+        return {
+            "session_id": session_id,
+            "status": session["status"],
+            "model": "base",
+            "feedback": session["feedback"],
+        }
 
     if session["status"] == "feedback_ready":
         return generate_feedback(session_id)
@@ -461,6 +486,7 @@ def end_interview(session_id: str) -> Dict[str, Any]:
         {"session_id": session_id},
         {
             "$set": {
+                "status": "feedback_done",
                 "feedback": feedback_result["feedback"],
             }
         }

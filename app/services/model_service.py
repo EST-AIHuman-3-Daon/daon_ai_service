@@ -11,12 +11,14 @@ Stage = Literal[
     "interview",
     "feedback",
     "feedback_ready",
+    "feedback_done",
 ]
 
 MODEL_MAP = {
     "idle": "base",
     "feedback": "base",
     "feedback_ready": "base",
+    "feedback_done": "base",
 
     "base": "base",
     "friendly": "friendly",

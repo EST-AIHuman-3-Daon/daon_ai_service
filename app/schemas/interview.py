@@ -14,6 +14,7 @@ Stage = Literal[
     "interview",
     "feedback",
     "feedback_ready",
+    "feedback_done",
 ]
 
 
@@ -49,7 +50,7 @@ class CreateSessionRequest(BaseModel):
     user_id: str
     model: ModelName = "friendly"
     job_role: str = "ICT"
-    question_count: int = 5
+    question_count: int = Field(default=5, ge=1, le=10)
     resume_text: Optional[str] = ""
     job_post_text: Optional[str] = ""
 
