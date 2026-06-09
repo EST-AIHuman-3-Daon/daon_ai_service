@@ -10,6 +10,105 @@ from app.db.collections import (
     interview_messages_collection,
 )
 
+COMMON_RULES = [
+    "반드시 존댓말을 사용한다.",
+    "마지막 문장은 질문형으로 끝낸다.",
+    "무례한 인신공격, 비하, 차별 표현을 사용하지 않는다.",
+    "예시 문장을 그대로 복사하지 않고 입력 답변에 맞게 표현을 바꾼다.",
+    "질문은 1개만 생성한다.",
+    "한국어만 사용한다.",
+]
+
+PRESSURE_STYLE = "\n".join([
+    "- 첫 문장에는 지원자 답변의 핵심 키워드 1개를 포함하고, '모호', '정확히', '구체적이지', '명확하지' 중 1개를 함께 사용하여 답변의 부족한 지점을 지적한다.",
+    "- 긍정 표현 및 이모지를 사용하지 않는다.",
+    "- 발화 길이는 3문장 이하로 끝낸다.",
+    "- 마지막 질문 문장에는 '왜', '어떤', '어떻게', '구체적으로', '근거', '수치', '사례', '경험' 중 1개를 포함한다.",
+    "- 인정·완충 표현을 사용하지 않는다.",
+])
+
+FRIENDLY_STYLE = "\n".join([
+    "- 인정 또는 완충 표현을 발화 전체에 1회 이상 포함한다.",
+    "- '특히', '예를 들어', '구체적인 예로', '어떠한 배경에서' 중 1개 이상을 반드시 포함한다.",
+    "- 유도 키워드를 사용하되 질문의 개수는 반드시 1개로 유지한다.",
+    "- '상황', '역할', '행동', '결과', '이유', '근거', '사례', '배운 점' 중 1개 이상을 포함한다.",
+    "- 발화 길이는 4문장 이하로 끝낸다.",
+    "- 직접적인 부정 평가 표현을 사용하지 않는다.",
+])
+
+
+def get_interviewer_style(model: str) -> str:
+    if model == "pressure":
+        return PRESSURE_STYLE
+
+    if model == "friendly":
+        return FRIENDLY_STYLE
+
+    return """
+- 자연스러운 ICT 면접관처럼 질문한다.
+- 질문은 1개만 생성한다.
+- 발화 길이는 3문장 이하로 끝낸다.
+""".strip()
+
+
+def build_interview_prompt(
+    model: str,
+    state: str,
+    resume_text: str = "",
+    job_post_text: str = "",
+    question_count: int | None = None,
+    next_question_index: int | None = None,
+) -> str:
+    role_name = {
+        "pressure": "ICT 직무 압박 면접관",
+        "friendly": "ICT 직무 코칭형 면접관",
+        "base": "ICT 직무 면접관",
+    }.get(model, "ICT 직무 면접관")
+
+    if state == "FIRST_QUESTION":
+        state_rule = """
+[첫 질문 규칙]
+- 지원자는 신입이다.
+- 지원자의 이전 경험을 가정하지 않는다.
+- 직무 관심과 간단한 경험 확인 수준으로만 질문한다.
+- 기술 깊이, 성과, 수치 질문은 금지한다.
+- 가볍게 무엇을 해봤는지 정도만 묻는다.
+""".strip()
+    else:
+        state_rule = f"""
+[후속 질문 규칙]
+- 반드시 직전 답변에서 나온 명사 1개만 사용한다.
+- project, experience, job 같은 일반 단어는 사용하지 않는다.
+- 새로운 주제를 추가하지 않는다.
+- 깊이 확장 질문만 생성한다.
+- 총 질문 수: {question_count}
+- 다음 질문 번호: {next_question_index}
+""".strip()
+
+    return f"""
+당신은 {role_name}입니다.
+
+[목표]
+지원자의 역량과 경험을 검증하기 위한 면접 질문을 생성합니다.
+
+[공통 규칙]
+{chr(10).join(f"- {r}" for r in COMMON_RULES)}
+
+[면접관 스타일]
+{get_interviewer_style(model)}
+
+{state_rule}
+
+[지원자 이력서]
+{resume_text}
+
+[채용 공고]
+{job_post_text}
+
+[절대 출력 규칙]
+- 질문만 출력한다.
+- 설명, 제목, 번호를 붙이지 않는다.
+""".strip()
 
 def create_session(
     user_id: str,
@@ -95,25 +194,12 @@ def start_interview(session_id: str) -> Dict[str, Any]:
         model=session["model"],
     )
 
-    system_prompt = f"""
-너는 한국인 면접관이다.
-
-[면접관 스타일]
-- model: {session["model"]}
-
-[지원자 이력서]
-{session["resume_text"]}
-
-[채용 공고]
-{session["job_post_text"]}
-
-[규칙]
-- 첫 번째 면접 질문을 생성한다.
-- 질문은 1개만 생성한다.
-- 반드시 한국어로 작성한다.
-- 중국어, 영어 문장을 사용하지 않는다.
-- 질문은 짧고 명확하게 작성한다.
-""".strip()
+    system_prompt = build_interview_prompt(
+        model=session["model"],
+        state="FIRST_QUESTION",
+        resume_text=session["resume_text"],
+        job_post_text=session["job_post_text"],
+    )
 
     messages = [
         {"role": "system", "content": system_prompt},
@@ -250,29 +336,14 @@ def submit_answer(
         if item["role"] in ["user", "assistant"]
     ]
 
-    system_prompt = f"""
-너는 한국인 면접관이다.
-
-[면접관 스타일]
-- model: {selected_model}
-
-[지원자 이력서]
-{session["resume_text"]}
-
-[채용 공고]
-{session["job_post_text"]}
-
-[현재 진행 상황]
-- 총 질문 수: {question_count}
-- 다음 질문 번호: {next_question_index}
-
-[규칙]
-- 이전 답변을 바탕으로 다음 면접 질문 또는 꼬리질문을 생성한다.
-- 질문은 1개만 생성한다.
-- 반드시 한국어로 작성한다.
-- 중국어, 영어 문장을 사용하지 않는다.
-- 질문은 짧고 명확하게 작성한다.
-""".strip()
+    system_prompt = build_interview_prompt(
+        model=selected_model,
+        state="FOLLOWUP",
+        resume_text=session["resume_text"],
+        job_post_text=session["job_post_text"],
+        question_count=question_count,
+        next_question_index=next_question_index,
+    )
 
     messages = [
         {"role": "system", "content": system_prompt}
@@ -282,7 +353,7 @@ def submit_answer(
 
     messages.append({
         "role": "user",
-        "content": "지원자의 마지막 답변을 바탕으로 다음 면접 질문을 1개 생성해 주세요.",
+        "content": "직전 지원자 답변에서 구체적인 명사 1개만 선택해 다음 면접 질문을 1개만 생성하세요.",
     })
 
     next_question = chat_with_transformers(model, messages)
